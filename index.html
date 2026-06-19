@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Music Player</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@2.47.0/tabler-icons.min.css">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<input type="file" id="folder-input" webkitdirectory multiple>
+
+<div class="player-shell">
+
+  <!-- NOW PLAYING -->
+  <div class="card now-playing">
+
+    <div class="artwork-wrap">
+      <canvas class="artwork-canvas" id="artwork-canvas" width="400" height="400"></canvas>
+    </div>
+
+    <div class="track-info">
+      <div class="track-title" id="track-title">Nenhuma faixa</div>
+      <div class="track-artist" id="track-artist">Adicione uma pasta para começar</div>
+    </div>
+
+    <div class="waveform-wrap">
+      <div class="waveform-bars" id="waveform" title="Clique para buscar posição"></div>
+      <div class="time-row">
+        <span id="cur-time">0:00</span>
+        <span id="dur-time">0:00</span>
+      </div>
+    </div>
+
+    <div class="controls">
+      <button class="ctrl-btn" id="btn-shuffle" title="Aleatório (S)"><i class="ti ti-arrows-shuffle"></i></button>
+      <button class="ctrl-btn" id="btn-prev" title="Anterior (←)"><i class="ti ti-player-track-prev"></i></button>
+      <button class="play-btn" id="btn-play" title="Play/Pause (Espaço)"><i class="ti ti-player-play" id="play-icon"></i></button>
+      <button class="ctrl-btn" id="btn-next" title="Próxima (→)"><i class="ti ti-player-track-next"></i></button>
+      <button class="ctrl-btn" id="btn-repeat" title="Repetir (R)"><i class="ti ti-repeat"></i></button>
+    </div>
+
+    <div class="volume-row">
+      <i class="ti ti-volume" aria-hidden="true"></i>
+      <input type="range" id="vol-slider" min="0" max="100" value="80" title="Volume">
+    </div>
+
+  </div>
+
+  <!-- QUEUE -->
+  <div class="card queue-panel">
+    <div class="queue-header">
+      <span class="queue-title">Fila</span>
+      <button class="add-btn" id="btn-add-folder">
+        <i class="ti ti-folder-plus" aria-hidden="true"></i> Adicionar pasta
+      </button>
+    </div>
+
+    <div id="loading-bar" class="loading-bar" style="display: none;">
+      <i class="ti ti-loader loader-spin"></i>
+      <span><span id="loading-label">Lendo arquivos...</span> (<span id="load-current">0</span>/<span id="load-total">0</span>)</span>
+    </div>
+
+    <div class="queue-list" id="queue-list">
+      <div class="queue-empty" id="queue-empty">
+        <i class="ti ti-music" aria-hidden="true"></i>
+        <div>Nenhuma música ainda.<br>Clique em "Adicionar pasta" ou<br>arraste uma pasta aqui.</div>
+      </div>
+    </div>
+
+    <div class="stats-bar" id="stats-bar" style="display:none">
+      <div><span id="stat-count">0</span> faixas</div>
+      <div><span id="stat-dur">—</span> total</div>
+    </div>
+  </div>
+
+</div>
+
+<audio id="audio-el" preload="none"></audio>
+
+<script src="app.js"></script>
+</body>
+</html>
