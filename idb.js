@@ -20,11 +20,11 @@ function openDB() {
 
 async function putTrack(track) {
   // guarda só o essencial (o handle é clonável, o File não entra aqui)
-  const { id, handle, path, title, artist, duration, seed } = track;
+  const { id, handle, path, title, artist, duration, seed, order } = track;
   const db = await openDB();
   return new Promise((resolve, reject) => {
     const tx = db.transaction(STORE, 'readwrite');
-    tx.objectStore(STORE).put({ id, handle, path, title, artist, duration, seed });
+    tx.objectStore(STORE).put({ id, handle, path, title, artist, duration, seed, order });
     tx.oncomplete = () => resolve();
     tx.onerror = () => reject(tx.error);
   });
