@@ -279,10 +279,6 @@ input[type=range]::-moz-range-thumb {
 .q-item:hover .q-remove { display: flex; }
 .q-remove:hover { color: #FF5C7A; }
 
-.q-item.locked { opacity: 0.4; cursor: not-allowed; }
-.q-item.locked:hover { background: none; }
-.q-lock { font-size: 14px; color: #4A4760; flex-shrink: 0; }
-
 .stats-bar {
   padding: 10px 16px;
   border-top: 0.5px solid #2A2A30;

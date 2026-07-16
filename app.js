@@ -222,8 +222,7 @@ async function addFolderHandle(dirHandle) {
       id, handle, path,
       title, artist: artist || folder || 'Desconhecido',
       duration: null,
-      seed: hashStr(path + file.size),
-      order: queue.length
+      seed: hashStr(path + file.size)
     };
     queue.push(track);
     putTrack(track).catch(err => console.warn('Erro ao salvar no IndexedDB', err));
@@ -295,7 +294,7 @@ function renderQueue() {
 
 function buildItem(item, idx) {
   const div = document.createElement('div');
-  div.className = 'q-item' + (idx === currentIdx ? ' active' : '') + (item._locked ? ' locked' : '');
+  div.className = 'q-item' + (idx === currentIdx ? ' active' : '');
   div.dataset.idx = idx;
   div.innerHTML = `
     <div class="q-num">${idx + 1}</div>
@@ -305,17 +304,11 @@ function buildItem(item, idx) {
       <div class="q-meta">${esc(item.artist)}</div>
     </div>
     <div class="q-dur" data-dur>${item.duration != null ? fmtTime(item.duration) : '—'}</div>
-    ${item._locked ? '<i class="ti ti-lock q-lock" title="Reconecte a pasta pra tocar"></i>' : ''}
     <button class="q-remove" title="Remover" aria-label="Remover faixa"><i class="ti ti-x"></i></button>
   `;
   drawMiniArt(div.querySelector('canvas'), item.seed);
   div.addEventListener('click', e => {
     if (e.target.closest('.q-remove')) return;
-    if (item._locked) {
-      showReconnectBanner();
-      document.getElementById('reconnect-banner').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-      return;
-    }
     selectTrack(idx);
     playAudio();
   });
@@ -588,36 +581,26 @@ function showReconnectBanner() {
 }
 
 document.getElementById('btn-reconnect').addEventListener('click', async () => {
-  let stillLocked = false;
   for (const item of queue) {
     if (!item.handle) continue;
-    try {
-      const perm = await item.handle.requestPermission({ mode: 'read' });
-      item._locked = perm !== 'granted';
-    } catch {
-      item._locked = true;
-    }
-    if (item._locked) stillLocked = true;
+    try { await item.handle.requestPermission({ mode: 'read' }); } catch {}
   }
-  document.getElementById('reconnect-banner').style.display = stillLocked ? 'flex' : 'none';
-  renderQueue();
-  if (!stillLocked && currentIdx === -1 && queue.length > 0) selectTrack(0);
+  document.getElementById('reconnect-banner').style.display = 'none';
+  if (currentIdx === -1 && queue.length > 0) selectTrack(0);
 });
 
 async function loadPersistedQueue() {
   if (!supportsFSAccess) return;
   const saved = await getAllTracks();
   if (!saved.length) return;
-  saved.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
   queue = saved;
+  renderQueue();
 
   let needsReconnect = false;
   for (const item of queue) {
     const perm = await item.handle.queryPermission({ mode: 'read' });
-    item._locked = perm !== 'granted';
-    if (item._locked) needsReconnect = true;
+    if (perm !== 'granted') needsReconnect = true;
   }
-  renderQueue(); // renderiza DEPOIS de marcar as flags, senão o buildItem não sabe quem tá locked
   if (needsReconnect) showReconnectBanner();
   else if (currentIdx === -1) selectTrack(0);
 }
