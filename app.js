@@ -25,6 +25,34 @@ let animId = null;
 const metadataLoader = new Audio();
 metadataLoader.preload = 'metadata';
 
+// ── MediaSession API ──────────────────────────────────────────
+if ('mediaSession' in navigator) {
+  navigator.mediaSession.setActionHandler('play', () => {
+    if (currentIdx < 0) { selectTrack(0); playAudio(); return; }
+    audio.play();
+  });
+  navigator.mediaSession.setActionHandler('pause', () => audio.pause());
+  navigator.mediaSession.setActionHandler('previoustrack', prevTrack);
+  navigator.mediaSession.setActionHandler('nexttrack', nextTrack);
+  navigator.mediaSession.setActionHandler('seekto', (details) => {
+    if (details.seekTime != null) audio.currentTime = details.seekTime;
+  });
+}
+
+function updateMediaSessionMetadata(item) {
+  if (!('mediaSession' in navigator)) return;
+  navigator.mediaSession.metadata = new MediaMetadata({
+    title: item.title,
+    artist: item.artist,
+    artwork: [{ src: artCanvas.toDataURL('image/png'), sizes: '400x400', type: 'image/png' }]
+  });
+}
+
+function updateMediaSessionState() {
+  if (!('mediaSession' in navigator)) return;
+  navigator.mediaSession.playbackState = isPlaying ? 'playing' : 'paused';
+}
+
 // ── Waveform bars ──────────────────────────────────────────────
 (function buildWaveform() {
   const N = 64;
@@ -369,8 +397,9 @@ function selectTrack(idx) {
   const item = queue[idx];
   trackTitleEl.textContent = item.title;
   trackArtistEl.textContent = item.artist;
-  drawArtwork(item.seed);
-  paintWaveform(0);
+  drawArtwork(item.seed); // atualiza a artwork
+  updateMediaSessionMetadata(item); // atualiza a artwork do MediaSession
+  paintWaveform(0); // limpa o waveform
   curTimeEl.textContent = '0:00';
   durTimeEl.textContent = item.duration != null ? fmtTime(item.duration) : '0:00';
   document.querySelectorAll('.q-item').forEach((el, i) => el.classList.toggle('active', i === idx));
@@ -424,6 +453,7 @@ function stop() {
 
 function updatePlayIcon() {
   playIconEl.className = isPlaying ? 'ti ti-player-pause' : 'ti ti-player-play';
+  updateMediaSessionState(); // atualiza o estado do MediaSession
 }
 
 function nextTrack() {
