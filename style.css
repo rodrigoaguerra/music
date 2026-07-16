@@ -220,7 +220,6 @@ input[type=range]::-moz-range-thumb {
 .queue-empty i { font-size: 40px; color: #2A2A35; }
 
 .q-item {
-  touch-action: manipulation;
   display: flex;
   align-items: center;
   gap: 10px;

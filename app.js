@@ -21,7 +21,6 @@ let repeat = 0; // 0=off 1=all 2=one
 let currentObjectURL = null;
 let wfBars = [];
 let animId = null;
-let playToken = 0; // usado pra evitar que chamadas antigas de playAudio sobrescrevam a mais nova
 
 const metadataLoader = new Audio();
 metadataLoader.preload = 'metadata';
@@ -411,7 +410,6 @@ function selectTrack(idx) {
 async function playAudio() {
   if (currentIdx < 0 || currentIdx >= queue.length) return;
   const item = queue[currentIdx];
-  const myToken = ++playToken; // marca essa chamada como "a mais nova até agora"
 
   stop();
 
@@ -424,21 +422,22 @@ async function playAudio() {
     return;
   }
 
-  if (myToken !== playToken) return; // uma chamada mais nova já assumiu — descarta essa
-
   const url = URL.createObjectURL(file);
   currentObjectURL = url;
   audio.preload = 'auto';
   audio.src = url;
   audio.volume = document.getElementById('vol-slider').value / 100;
-
+  
+  // Alteração aqui:
   audio.play().then(() => {
-    if (myToken !== playToken) return; // proteção extra: nem atualiza o ícone se ficou obsoleta
     isPlaying = true;
     updatePlayIcon();
     startAnim();
   }).catch(err => {
-    if (err.name !== 'AbortError') console.warn('Playback error:', err);
+    // Ignora o erro se for apenas uma interrupção de reprodução
+    if (err.name !== 'AbortError') {
+      console.warn('Playback error:', err);
+    }
   });
 }
 
