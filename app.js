@@ -20,21 +20,14 @@ let repeat = 0; // 0=off 1=all 2=one
 let currentObjectURL = null;
 let wfBars = [];
 let animId = null;
+let playbackRequested = false;
 
 const metadataLoader = new Audio();
 metadataLoader.preload = 'metadata';
 
 // ── MediaSession API ──────────────────────────────────────────
-function handlePlayRequest() {
-  if (queue.length === 0) return;
-  if (currentIdx < 0) {
-    selectTrack(0);
-  }
-  playAudio();
-}
-
 if ('mediaSession' in navigator) {
-  navigator.mediaSession.setActionHandler('play', handlePlayRequest);
+  navigator.mediaSession.setActionHandler('play', audio.play());
   navigator.mediaSession.setActionHandler('pause', () => audio.pause());
   navigator.mediaSession.setActionHandler('previoustrack', prevTrack);
   navigator.mediaSession.setActionHandler('nexttrack', nextTrack);
@@ -363,28 +356,55 @@ function playAudio() {
   if (currentIdx < 0 || currentIdx >= queue.length) return;
   const item = queue[currentIdx];
 
-  stop();
+  if (currentObjectURL) {
+    URL.revokeObjectURL(currentObjectURL);
+    currentObjectURL = null;
+  }
 
   const url = URL.createObjectURL(item.file);
   currentObjectURL = url;
+  playbackRequested = true;
+
+  audio.pause();
   audio.preload = 'auto';
   audio.src = url;
   audio.volume = document.getElementById('vol-slider').value / 100;
-  
-  // Alteração aqui:
-  audio.play().then(() => {
-    isPlaying = true;
-    updatePlayIcon();
-    startAnim();
-  }).catch(err => {
-    // Ignora o erro se for apenas uma interrupção de reprodução
-    if (err.name !== 'AbortError') {
-      console.warn('Playback error:', err);
+  audio.load();
+
+  const tryPlay = () => {
+    if (!playbackRequested) return;
+    const playPromise = audio.play();
+    if (playPromise && typeof playPromise.then === 'function') {
+      playPromise.then(() => {
+        isPlaying = true;
+        updatePlayIcon();
+        startAnim();
+      }).catch(err => {
+        if (err.name !== 'AbortError' && err.name !== 'NotAllowedError') {
+          console.warn('Playback error:', err);
+        }
+      });
+    } else {
+      isPlaying = true;
+      updatePlayIcon();
+      startAnim();
     }
-  });
+  };
+
+  if (audio.readyState >= 2) {
+    tryPlay();
+  } else {
+    const onCanPlay = () => {
+      if (!playbackRequested) return;
+      tryPlay();
+      audio.removeEventListener('canplay', onCanPlay);
+    };
+    audio.addEventListener('canplay', onCanPlay);
+  }
 }
 
 function stop() {
+  playbackRequested = false;
   stopAnim();
   audio.pause();
   audio.src = '';
@@ -422,6 +442,19 @@ function prevTrack() {
 }
 
 // ── Audio events ───────────────────────────────────────────────
+audio.addEventListener('play', () => {
+  isPlaying = true;
+  updatePlayIcon();
+  startAnim();
+});
+
+audio.addEventListener('pause', () => {
+  if (audio.ended) return;
+  isPlaying = false;
+  stopAnim();
+  updatePlayIcon();
+});
+
 audio.addEventListener('timeupdate', () => {
   if (!audio.duration) return;
   curTimeEl.textContent = fmtTime(audio.currentTime);
@@ -444,15 +477,13 @@ audio.addEventListener('error', e => {
 // ── Controls ───────────────────────────────────────────────────
 document.getElementById('btn-play').addEventListener('click', () => {
   if (queue.length === 0) return;
-  if (currentIdx < 0) { selectTrack(0); playAudio(); return; }
   if (isPlaying) {
     audio.pause();
     isPlaying = false;
     stopAnim();
     updatePlayIcon();
   } else {
-    if (!audio.src) { playAudio(); return; }
-    audio.play().then(() => { isPlaying = true; updatePlayIcon(); startAnim(); });
+    handlePlayRequest();
   }
 });
 
