@@ -220,7 +220,6 @@ input[type=range]::-moz-range-thumb {
 .queue-empty i { font-size: 40px; color: #2A2A35; }
 
 .q-item {
-  touch-action: manipulation;
   display: flex;
   align-items: center;
   gap: 10px;
@@ -279,10 +278,6 @@ input[type=range]::-moz-range-thumb {
 
 .q-item:hover .q-remove { display: flex; }
 .q-remove:hover { color: #FF5C7A; }
-
-.q-item.locked { opacity: 0.4; cursor: not-allowed; }
-.q-item.locked:hover { background: none; }
-.q-lock { font-size: 14px; color: #4A4760; flex-shrink: 0; }
 
 .stats-bar {
   padding: 10px 16px;

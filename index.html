@@ -6,7 +6,6 @@
 <title>Music Player</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@2.47.0/tabler-icons.min.css">
 <link rel="stylesheet" href="style.css">
-<link rel="manifest" href="manifest.json">
 </head>
 <body>
 
@@ -63,12 +62,6 @@
       <span><span id="loading-label">Lendo arquivos...</span> (<span id="load-current">0</span>/<span id="load-total">0</span>)</span>
     </div>
 
-    <div id="reconnect-banner" class="loading-bar" style="display: none;">
-      <i class="ti ti-lock"></i>
-      <span>Permissão de acesso às pastas expirou.</span>
-      <button id="btn-reconnect" class="add-btn" style="margin-left:auto">Reconectar</button>
-    </div>
-
     <div class="queue-list" id="queue-list">
       <div class="queue-empty" id="queue-empty">
         <i class="ti ti-music" aria-hidden="true"></i>
@@ -86,7 +79,6 @@
 
 <audio id="audio-el" preload="none"></audio>
 
-<script src="idb.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

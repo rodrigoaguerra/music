@@ -11,7 +11,6 @@ const playIconEl = document.getElementById('play-icon');
 const waveformEl = document.getElementById('waveform');
 const artCanvas = document.getElementById('artwork-canvas');
 const artCtx = artCanvas.getContext('2d');
-const supportsFSAccess = 'showDirectoryPicker' in window; // suports File System Access API
 
 let queue = [];
 let currentIdx = -1;
@@ -21,38 +20,9 @@ let repeat = 0; // 0=off 1=all 2=one
 let currentObjectURL = null;
 let wfBars = [];
 let animId = null;
-let playToken = 0; // usado pra evitar que chamadas antigas de playAudio sobrescrevam a mais nova
 
 const metadataLoader = new Audio();
 metadataLoader.preload = 'metadata';
-
-// ── MediaSession API ──────────────────────────────────────────
-if ('mediaSession' in navigator) {
-  navigator.mediaSession.setActionHandler('play', () => {
-    if (currentIdx < 0) { selectTrack(0); playAudio(); return; }
-    audio.play();
-  });
-  navigator.mediaSession.setActionHandler('pause', () => audio.pause());
-  navigator.mediaSession.setActionHandler('previoustrack', prevTrack);
-  navigator.mediaSession.setActionHandler('nexttrack', nextTrack);
-  navigator.mediaSession.setActionHandler('seekto', (details) => {
-    if (details.seekTime != null) audio.currentTime = details.seekTime;
-  });
-}
-
-function updateMediaSessionMetadata(item) {
-  if (!('mediaSession' in navigator)) return;
-  navigator.mediaSession.metadata = new MediaMetadata({
-    title: item.title,
-    artist: item.artist,
-    artwork: [{ src: artCanvas.toDataURL('image/png'), sizes: '400x400', type: 'image/png' }]
-  });
-}
-
-function updateMediaSessionState() {
-  if (!('mediaSession' in navigator)) return;
-  navigator.mediaSession.playbackState = isPlaying ? 'playing' : 'paused';
-}
 
 // ── Waveform bars ──────────────────────────────────────────────
 (function buildWaveform() {
@@ -185,91 +155,6 @@ function parseName(filename) {
   return { artist: '', title: base };
 }
 
-// ── Duration probe ───────────────────────────────────────────── 
-function probeDurations(itemsToProcess) {
-  if (itemsToProcess.length === 0) return;
-  const loadingLabel = document.getElementById('loading-label');
-  const loadingBar = document.getElementById('loading-bar');
-  const loadCurrent = document.getElementById('load-current');
-  const loadTotal = document.getElementById('load-total');
-
-  loadingLabel.textContent = 'Lendo dados das faixas...';
-  loadingBar.style.display = 'flex';
-  loadTotal.textContent = itemsToProcess.length;
-  loadCurrent.textContent = 0;
-
-  let i = 0;
-  async function processNext() {
-    if (i >= itemsToProcess.length) { loadingBar.style.display = 'none'; return; }
-    loadCurrent.textContent = i + 1;
-    const item = itemsToProcess[i];
-    const file = item.handle ? await item.handle.getFile() : item.file;
-    const url = URL.createObjectURL(file);
-    metadataLoader.src = url;
-    metadataLoader.onloadedmetadata = () => {
-      item.duration = metadataLoader.duration;
-      URL.revokeObjectURL(url);
-      updateQueueItem(item);
-      updateStats();
-      if (item.handle) putTrack(item); // atualiza duração persistida
-      i++; processNext();
-    };
-    metadataLoader.onerror = () => { URL.revokeObjectURL(url); i++; processNext(); };
-  }
-  processNext();
-}
-
-// ── Persistence of Queue in browser ─────────────────────────────────────────────
-async function* walkDirectory(dirHandle, path = '') {
-  for await (const [name, handle] of dirHandle.entries()) {
-    const entryPath = path ? `${path}/${name}` : name;
-    if (handle.kind === 'file') yield { handle, path: entryPath };
-    else yield* walkDirectory(handle, entryPath);
-  }
-}
-
-async function addFolderHandle(dirHandle) {
-  const loadingLabel = document.getElementById('loading-label');
-  const loadingBar = document.getElementById('loading-bar');
-  const loadCurrent = document.getElementById('load-current');
-  const loadTotal = document.getElementById('load-total');
-
-  loadingLabel.textContent = 'Lendo pasta...';
-  loadingBar.style.display = 'flex';
-  loadTotal.textContent = '?';
-
-  let count = 0;
-  for await (const { handle, path } of walkDirectory(dirHandle)) {
-    if (!AUDIO_EXT.test(path)) continue;
-    const file = await handle.getFile(); // só pra ler nome/tamanho
-    const id = hashStr(path + file.size).toString();
-    if (queue.some(q => q.id === id)) continue;
-
-    const { artist, title } = parseName(file.name);
-    const folder = path.split('/')[0];
-    const track = {
-      id, handle, path,
-      title, artist: artist || folder || 'Desconhecido',
-      duration: null,
-      seed: hashStr(path + file.size),
-      order: queue.length
-    };
-    queue.push(track);
-    putTrack(track).catch(err => console.warn('Erro ao salvar no IndexedDB', err));
-    count++;
-    loadCurrent.textContent = count;
-  }
-
-  loadingBar.style.display = 'none';
-  renderQueue();
-  probeDurations(queue.filter(i => i.duration === null));
-  if (currentIdx === -1 && queue.length > 0) selectTrack(0);
-}
-
-async function getFileFor(item) {
-  return item.handle ? await item.handle.getFile() : item.file;
-}
-
 // ── Queue management ───────────────────────────────────────────
 function addFiles(files) {
   // Pega os elementos do loader
@@ -304,7 +189,48 @@ function addFiles(files) {
     return;
   }
 
-  probeDurations(queue.filter(i => i.duration === null));
+  // Lazy duration probe (metadata only, no decode)
+  const itemsToProcess = queue.filter(i => i.duration === null);
+  
+  if (itemsToProcess.length > 0) {
+    let i = 0;
+
+    // Exibe o loader e define o total
+    loadingLabel.textContent = 'Lendo dados das faixas...';
+    loadTotal.textContent = itemsToProcess.length;
+    loadCurrent.textContent = 0;
+
+    function processNext() {
+      // Quando terminar todos, esconde o loader
+      if (i >= itemsToProcess.length) {
+        loadingBar.style.display = 'none';
+        return;
+      }
+      
+      // Atualiza o contador visual
+      loadCurrent.textContent = i + 1;
+      
+      const item = itemsToProcess[i];
+      const url = URL.createObjectURL(item.file);
+      
+      metadataLoader.src = url;
+      metadataLoader.onloadedmetadata = () => {
+        item.duration = metadataLoader.duration;
+        URL.revokeObjectURL(url);
+        updateQueueItem(item);
+        updateStats();
+        i++;
+        processNext(); // Chama o próximo item sequencialmente
+      };
+      
+     metadataLoader.onerror = () => {
+        URL.revokeObjectURL(url);
+        i++;
+        processNext(); // Pula em caso de erro
+      };
+    }
+    processNext();
+  }
 
   renderQueue();
   if (currentIdx === -1) selectTrack(0);
@@ -324,7 +250,7 @@ function renderQueue() {
 
 function buildItem(item, idx) {
   const div = document.createElement('div');
-  div.className = 'q-item' + (idx === currentIdx ? ' active' : '') + (item._locked ? ' locked' : '');
+  div.className = 'q-item' + (idx === currentIdx ? ' active' : '');
   div.dataset.idx = idx;
   div.innerHTML = `
     <div class="q-num">${idx + 1}</div>
@@ -334,17 +260,11 @@ function buildItem(item, idx) {
       <div class="q-meta">${esc(item.artist)}</div>
     </div>
     <div class="q-dur" data-dur>${item.duration != null ? fmtTime(item.duration) : '—'}</div>
-    ${item._locked ? '<i class="ti ti-lock q-lock" title="Reconecte a pasta pra tocar"></i>' : ''}
     <button class="q-remove" title="Remover" aria-label="Remover faixa"><i class="ti ti-x"></i></button>
   `;
   drawMiniArt(div.querySelector('canvas'), item.seed);
   div.addEventListener('click', e => {
     if (e.target.closest('.q-remove')) return;
-    if (item._locked) {
-      showReconnectBanner();
-      document.getElementById('reconnect-banner').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-      return;
-    }
     selectTrack(idx);
     playAudio();
   });
@@ -362,8 +282,6 @@ function updateQueueItem(item) {
 }
 
 function removeTrack(idx) {
-  const item = queue[idx];
-  if (item.handle) deleteTrackDB(item.id).catch(() => {});
   if (idx === currentIdx) {
     stop();
     currentIdx = -1;
@@ -398,9 +316,8 @@ function selectTrack(idx) {
   const item = queue[idx];
   trackTitleEl.textContent = item.title;
   trackArtistEl.textContent = item.artist;
-  drawArtwork(item.seed); // atualiza a artwork
-  updateMediaSessionMetadata(item); // atualiza a artwork do MediaSession
-  paintWaveform(0); // limpa o waveform
+  drawArtwork(item.seed);
+  paintWaveform(0);
   curTimeEl.textContent = '0:00';
   durTimeEl.textContent = item.duration != null ? fmtTime(item.duration) : '0:00';
   document.querySelectorAll('.q-item').forEach((el, i) => el.classList.toggle('active', i === idx));
@@ -408,37 +325,28 @@ function selectTrack(idx) {
   if (activeEl) activeEl.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
 }
 
-async function playAudio() {
+function playAudio() {
   if (currentIdx < 0 || currentIdx >= queue.length) return;
   const item = queue[currentIdx];
-  const myToken = ++playToken; // marca essa chamada como "a mais nova até agora"
 
   stop();
 
-  let file;
-  try {
-    file = await getFileFor(item);
-  } catch (err) {
-    console.warn('Sem permissão de acesso', err);
-    showReconnectBanner();
-    return;
-  }
-
-  if (myToken !== playToken) return; // uma chamada mais nova já assumiu — descarta essa
-
-  const url = URL.createObjectURL(file);
+  const url = URL.createObjectURL(item.file);
   currentObjectURL = url;
   audio.preload = 'auto';
   audio.src = url;
   audio.volume = document.getElementById('vol-slider').value / 100;
-
+  
+  // Alteração aqui:
   audio.play().then(() => {
-    if (myToken !== playToken) return; // proteção extra: nem atualiza o ícone se ficou obsoleta
     isPlaying = true;
     updatePlayIcon();
     startAnim();
   }).catch(err => {
-    if (err.name !== 'AbortError') console.warn('Playback error:', err);
+    // Ignora o erro se for apenas uma interrupção de reprodução
+    if (err.name !== 'AbortError') {
+      console.warn('Playback error:', err);
+    }
   });
 }
 
@@ -454,7 +362,6 @@ function stop() {
 
 function updatePlayIcon() {
   playIconEl.className = isPlaying ? 'ti ti-player-pause' : 'ti ti-player-play';
-  updateMediaSessionState(); // atualiza o estado do MediaSession
 }
 
 function nextTrack() {
@@ -543,20 +450,9 @@ volSlider.addEventListener('input', function() {
   updateSliderFill(this);
 });
 
-document.getElementById('btn-add-folder').addEventListener('click', async () => {
-  // Se o navegador suporta a File System Access API, abre o seletor de pastas
-  if (supportsFSAccess) {
-    try {
-      const dirHandle = await window.showDirectoryPicker();
-      await addFolderHandle(dirHandle);
-    } catch (err) {
-      if (err.name !== 'AbortError') console.warn(err);
-    }
-  } else {
-    // fallback pro que você já tem, sem persistência
-    folderInput.value = '';
-    folderInput.click();
-  }
+document.getElementById('btn-add-folder').addEventListener('click', () => {
+  folderInput.value = '';
+  folderInput.click();
 });
 
 folderInput.addEventListener('change', e => addFiles(e.target.files));
@@ -612,53 +508,3 @@ document.addEventListener('keydown', e => {
   if (e.key === 's' || e.key === 'S') document.getElementById('btn-shuffle').click();
   if (e.key === 'r' || e.key === 'R') document.getElementById('btn-repeat').click();
 });
-
-// ── Persistência de musicas ─────────────────────────────────────────
-function showReconnectBanner() {
-  document.getElementById('reconnect-banner').style.display = 'flex';
-}
-
-document.getElementById('btn-reconnect').addEventListener('click', async () => {
-  let stillLocked = false;
-  for (const item of queue) {
-    if (!item.handle) continue;
-    try {
-      const perm = await item.handle.requestPermission({ mode: 'read' });
-      item._locked = perm !== 'granted';
-    } catch {
-      item._locked = true;
-    }
-    if (item._locked) stillLocked = true;
-  }
-  document.getElementById('reconnect-banner').style.display = stillLocked ? 'flex' : 'none';
-  renderQueue();
-  if (!stillLocked && currentIdx === -1 && queue.length > 0) selectTrack(0);
-});
-
-async function loadPersistedQueue() {
-  if (!supportsFSAccess) return;
-  const saved = await getAllTracks();
-  if (!saved.length) return;
-  saved.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
-  queue = saved;
-
-  let needsReconnect = false;
-  for (const item of queue) {
-    const perm = await item.handle.queryPermission({ mode: 'read' });
-    item._locked = perm !== 'granted';
-    if (item._locked) needsReconnect = true;
-  }
-  renderQueue(); // renderiza DEPOIS de marcar as flags, senão o buildItem não sabe quem tá locked
-  if (needsReconnect) showReconnectBanner();
-  else if (currentIdx === -1) selectTrack(0);
-}
-
-if (navigator.storage?.persist) navigator.storage.persist();
-loadPersistedQueue();
-
-// ── Service Worker ─────────────────────────────────────────
-if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('./sw.js').catch(err => console.warn('SW registration failed', err));
-  });
-}
