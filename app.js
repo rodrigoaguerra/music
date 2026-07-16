@@ -11,7 +11,6 @@ const playIconEl = document.getElementById('play-icon');
 const waveformEl = document.getElementById('waveform');
 const artCanvas = document.getElementById('artwork-canvas');
 const artCtx = artCanvas.getContext('2d');
-const supportsFSAccess = 'showDirectoryPicker' in window; // suports File System Access API
 
 let queue = [];
 let currentIdx = -1;
@@ -156,90 +155,6 @@ function parseName(filename) {
   return { artist: '', title: base };
 }
 
-// ── Duration probe ───────────────────────────────────────────── 
-function probeDurations(itemsToProcess) {
-  if (itemsToProcess.length === 0) return;
-  const loadingLabel = document.getElementById('loading-label');
-  const loadingBar = document.getElementById('loading-bar');
-  const loadCurrent = document.getElementById('load-current');
-  const loadTotal = document.getElementById('load-total');
-
-  loadingLabel.textContent = 'Lendo dados das faixas...';
-  loadingBar.style.display = 'flex';
-  loadTotal.textContent = itemsToProcess.length;
-  loadCurrent.textContent = 0;
-
-  let i = 0;
-  async function processNext() {
-    if (i >= itemsToProcess.length) { loadingBar.style.display = 'none'; return; }
-    loadCurrent.textContent = i + 1;
-    const item = itemsToProcess[i];
-    const file = item.handle ? await item.handle.getFile() : item.file;
-    const url = URL.createObjectURL(file);
-    metadataLoader.src = url;
-    metadataLoader.onloadedmetadata = () => {
-      item.duration = metadataLoader.duration;
-      URL.revokeObjectURL(url);
-      updateQueueItem(item);
-      updateStats();
-      if (item.handle) putTrack(item); // atualiza duração persistida
-      i++; processNext();
-    };
-    metadataLoader.onerror = () => { URL.revokeObjectURL(url); i++; processNext(); };
-  }
-  processNext();
-}
-
-// ── Persistence of Queue in browser ─────────────────────────────────────────────
-async function* walkDirectory(dirHandle, path = '') {
-  for await (const [name, handle] of dirHandle.entries()) {
-    const entryPath = path ? `${path}/${name}` : name;
-    if (handle.kind === 'file') yield { handle, path: entryPath };
-    else yield* walkDirectory(handle, entryPath);
-  }
-}
-
-async function addFolderHandle(dirHandle) {
-  const loadingLabel = document.getElementById('loading-label');
-  const loadingBar = document.getElementById('loading-bar');
-  const loadCurrent = document.getElementById('load-current');
-  const loadTotal = document.getElementById('load-total');
-
-  loadingLabel.textContent = 'Lendo pasta...';
-  loadingBar.style.display = 'flex';
-  loadTotal.textContent = '?';
-
-  let count = 0;
-  for await (const { handle, path } of walkDirectory(dirHandle)) {
-    if (!AUDIO_EXT.test(path)) continue;
-    const file = await handle.getFile(); // só pra ler nome/tamanho
-    const id = hashStr(path + file.size).toString();
-    if (queue.some(q => q.id === id)) continue;
-
-    const { artist, title } = parseName(file.name);
-    const folder = path.split('/')[0];
-    const track = {
-      id, handle, path,
-      title, artist: artist || folder || 'Desconhecido',
-      duration: null,
-      seed: hashStr(path + file.size)
-    };
-    queue.push(track);
-    putTrack(track).catch(err => console.warn('Erro ao salvar no IndexedDB', err));
-    count++;
-    loadCurrent.textContent = count;
-  }
-
-  loadingBar.style.display = 'none';
-  renderQueue();
-  probeDurations(queue.filter(i => i.duration === null));
-  if (currentIdx === -1 && queue.length > 0) selectTrack(0);
-}
-
-async function getFileFor(item) {
-  return item.handle ? await item.handle.getFile() : item.file;
-}
-
 // ── Queue management ───────────────────────────────────────────
 function addFiles(files) {
   // Pega os elementos do loader
@@ -274,7 +189,48 @@ function addFiles(files) {
     return;
   }
 
-  probeDurations(queue.filter(i => i.duration === null));
+  // Lazy duration probe (metadata only, no decode)
+  const itemsToProcess = queue.filter(i => i.duration === null);
+  
+  if (itemsToProcess.length > 0) {
+    let i = 0;
+
+    // Exibe o loader e define o total
+    loadingLabel.textContent = 'Lendo dados das faixas...';
+    loadTotal.textContent = itemsToProcess.length;
+    loadCurrent.textContent = 0;
+
+    function processNext() {
+      // Quando terminar todos, esconde o loader
+      if (i >= itemsToProcess.length) {
+        loadingBar.style.display = 'none';
+        return;
+      }
+      
+      // Atualiza o contador visual
+      loadCurrent.textContent = i + 1;
+      
+      const item = itemsToProcess[i];
+      const url = URL.createObjectURL(item.file);
+      
+      metadataLoader.src = url;
+      metadataLoader.onloadedmetadata = () => {
+        item.duration = metadataLoader.duration;
+        URL.revokeObjectURL(url);
+        updateQueueItem(item);
+        updateStats();
+        i++;
+        processNext(); // Chama o próximo item sequencialmente
+      };
+      
+     metadataLoader.onerror = () => {
+        URL.revokeObjectURL(url);
+        i++;
+        processNext(); // Pula em caso de erro
+      };
+    }
+    processNext();
+  }
 
   renderQueue();
   if (currentIdx === -1) selectTrack(0);
@@ -326,8 +282,6 @@ function updateQueueItem(item) {
 }
 
 function removeTrack(idx) {
-  const item = queue[idx];
-  if (item.handle) deleteTrackDB(item.id).catch(() => {});
   if (idx === currentIdx) {
     stop();
     currentIdx = -1;
@@ -371,22 +325,13 @@ function selectTrack(idx) {
   if (activeEl) activeEl.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
 }
 
-async function playAudio() {
+function playAudio() {
   if (currentIdx < 0 || currentIdx >= queue.length) return;
   const item = queue[currentIdx];
 
   stop();
 
-  let file;
-  try {
-    file = await getFileFor(item);
-  } catch (err) {
-    console.warn('Sem permissão de acesso', err);
-    showReconnectBanner();
-    return;
-  }
-
-  const url = URL.createObjectURL(file);
+  const url = URL.createObjectURL(item.file);
   currentObjectURL = url;
   audio.preload = 'auto';
   audio.src = url;
@@ -505,20 +450,9 @@ volSlider.addEventListener('input', function() {
   updateSliderFill(this);
 });
 
-document.getElementById('btn-add-folder').addEventListener('click', async () => {
-  // Se o navegador suporta a File System Access API, abre o seletor de pastas
-  if (supportsFSAccess) {
-    try {
-      const dirHandle = await window.showDirectoryPicker();
-      await addFolderHandle(dirHandle);
-    } catch (err) {
-      if (err.name !== 'AbortError') console.warn(err);
-    }
-  } else {
-    // fallback pro que você já tem, sem persistência
-    folderInput.value = '';
-    folderInput.click();
-  }
+document.getElementById('btn-add-folder').addEventListener('click', () => {
+  folderInput.value = '';
+  folderInput.click();
 });
 
 folderInput.addEventListener('change', e => addFiles(e.target.files));
@@ -574,36 +508,3 @@ document.addEventListener('keydown', e => {
   if (e.key === 's' || e.key === 'S') document.getElementById('btn-shuffle').click();
   if (e.key === 'r' || e.key === 'R') document.getElementById('btn-repeat').click();
 });
-
-// ── Persistência de musicas ─────────────────────────────────────────
-function showReconnectBanner() {
-  document.getElementById('reconnect-banner').style.display = 'flex';
-}
-
-document.getElementById('btn-reconnect').addEventListener('click', async () => {
-  for (const item of queue) {
-    if (!item.handle) continue;
-    try { await item.handle.requestPermission({ mode: 'read' }); } catch {}
-  }
-  document.getElementById('reconnect-banner').style.display = 'none';
-  if (currentIdx === -1 && queue.length > 0) selectTrack(0);
-});
-
-async function loadPersistedQueue() {
-  if (!supportsFSAccess) return;
-  const saved = await getAllTracks();
-  if (!saved.length) return;
-  queue = saved;
-  renderQueue();
-
-  let needsReconnect = false;
-  for (const item of queue) {
-    const perm = await item.handle.queryPermission({ mode: 'read' });
-    if (perm !== 'granted') needsReconnect = true;
-  }
-  if (needsReconnect) showReconnectBanner();
-  else if (currentIdx === -1) selectTrack(0);
-}
-
-if (navigator.storage?.persist) navigator.storage.persist();
-loadPersistedQueue();
