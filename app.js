@@ -508,3 +508,10 @@ document.addEventListener('keydown', e => {
   if (e.key === 's' || e.key === 'S') document.getElementById('btn-shuffle').click();
   if (e.key === 'r' || e.key === 'R') document.getElementById('btn-repeat').click();
 });
+
+// ── Service worker ────────────────────────────────────────────
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./sw.js').catch(err => console.warn('SW registration failed', err));
+  });
+}
