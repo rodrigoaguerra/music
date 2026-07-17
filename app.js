@@ -349,29 +349,36 @@ function selectTrack(idx) {
   if (activeEl) activeEl.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
 }
 
-function playAudio() {
+async function playAudio() {
   if (currentIdx < 0 || currentIdx >= queue.length) return;
   const item = queue[currentIdx];
   stop();
 
-  getFileFor(item).then(file => {
-    const url = URL.createObjectURL(file);
-    currentObjectURL = url;
-    audio.preload = 'auto';
-    audio.src = url;
-    audio.volume = document.getElementById('vol-slider').value / 100;
-    audio.play().then(() => {
-      isPlaying = true;
-      updatePlayIcon();
-      startAnim();
-    }).catch(err => {
-      if (err.name !== 'AbortError') {
-        console.warn('Playback error:', err);
-      }
-    });
-  }).catch(err => {
+  let file;
+  try {
+    file = await getFileFor(item);
+  } catch (err) {
     console.warn('Sem permissão de acesso', err);
     showReconnectBanner();
+    return;
+  }
+
+  const url = URL.createObjectURL(file);
+  currentObjectURL = url;
+  audio.preload = 'auto';
+  audio.src = url;
+  audio.volume = document.getElementById('vol-slider').value / 100;
+  
+  // Alteração aqui:
+  audio.play().then(() => {
+    isPlaying = true;
+    updatePlayIcon();
+    startAnim();
+  }).catch(err => {
+    // Ignora o erro se for apenas uma interrupção de reprodução
+    if (err.name !== 'AbortError') {
+      console.warn('Playback error:', err);
+    }
   });
 }
 
