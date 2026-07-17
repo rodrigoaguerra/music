@@ -25,16 +25,11 @@ const metadataLoader = new Audio();
 metadataLoader.preload = 'metadata';
 
 // ── MediaSession API ──────────────────────────────────────────
-function handlePlayRequest() {
-  if (queue.length === 0) return;
-  if (currentIdx < 0) {
-    selectTrack(0);
-  }
-  playAudio();
-}
-
 if ('mediaSession' in navigator) {
-  navigator.mediaSession.setActionHandler('play', handlePlayRequest);
+  navigator.mediaSession.setActionHandler('play', () => {
+    if (currentIdx < 0) { selectTrack(0); playAudio(); return; }
+    audio.play();
+  });
   navigator.mediaSession.setActionHandler('pause', () => audio.pause());
   navigator.mediaSession.setActionHandler('previoustrack', prevTrack);
   navigator.mediaSession.setActionHandler('nexttrack', nextTrack);
