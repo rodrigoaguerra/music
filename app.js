@@ -382,11 +382,11 @@ function stop() {
   if (currentObjectURL) { URL.revokeObjectURL(currentObjectURL); currentObjectURL = null; }
   isPlaying = false;
   updatePlayIcon();
+  updateMediaSessionState();
 }
 
 function updatePlayIcon() {
   playIconEl.className = isPlaying ? 'ti ti-player-pause' : 'ti ti-player-play';
-  updateMediaSessionState(); // update media session state
 }
 
 function nextTrack() {
@@ -412,6 +412,21 @@ function prevTrack() {
 }
 
 // ── Audio events ───────────────────────────────────────────────
+audio.addEventListener('play', () => {
+  isPlaying = true;
+  updatePlayIcon();
+  updateMediaSessionState(); // update media session state
+  startAnim();
+});
+
+audio.addEventListener('pause', () => {
+  if (audio.ended) return;
+  isPlaying = false;
+  updateMediaSessionState(); // update media session state
+  stopAnim();
+  updatePlayIcon();
+});
+
 audio.addEventListener('timeupdate', () => {
   if (!audio.duration) return;
   curTimeEl.textContent = fmtTime(audio.currentTime);
