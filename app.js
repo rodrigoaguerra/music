@@ -26,11 +26,6 @@ metadataLoader.preload = 'metadata';
 
 // ── MediaSession API ──────────────────────────────────────────
 if ('mediaSession' in navigator) {
-  navigator.mediaSession.setActionHandler('play', () => {
-    if (currentIdx < 0) { selectTrack(0); playAudio(); return; }
-    audio.play();
-  });
-  navigator.mediaSession.setActionHandler('pause', () => audio.pause());
   navigator.mediaSession.setActionHandler('previoustrack', prevTrack);
   navigator.mediaSession.setActionHandler('nexttrack', nextTrack);
   navigator.mediaSession.setActionHandler('seekto', (details) => {
