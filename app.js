@@ -334,6 +334,7 @@ function updateStats() {
 
 // ── Playback ───────────────────────────────────────────────────
 function selectTrack(idx) {
+  console.log('Selecting track', idx);
   if (idx < 0 || idx >= queue.length) return;
   currentIdx = idx;
   const item = queue[idx];
@@ -350,8 +351,10 @@ function selectTrack(idx) {
 }
 
 async function playAudio() {
+  console.log('Playing audio at index', currentIdx);
   if (currentIdx < 0 || currentIdx >= queue.length) return;
   const item = queue[currentIdx];
+  console.log('Playing', item.title, 'by', item.artist);
   stop();
 
   let file;
