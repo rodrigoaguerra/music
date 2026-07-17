@@ -27,7 +27,7 @@ metadataLoader.preload = 'metadata';
 
 // ── MediaSession API ──────────────────────────────────────────
 if ('mediaSession' in navigator) {
-  navigator.mediaSession.setActionHandler('play', () => audio.play());
+  navigator.mediaSession.setActionHandler('play', audio.play());
   navigator.mediaSession.setActionHandler('pause', () => audio.pause());
   navigator.mediaSession.setActionHandler('previoustrack', prevTrack);
   navigator.mediaSession.setActionHandler('nexttrack', nextTrack);
