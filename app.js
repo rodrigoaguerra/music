@@ -282,11 +282,17 @@ function buildItem(item, idx) {
       <div class="q-meta">${esc(item.artist)}</div>
     </div>
     <div class="q-dur" data-dur>${item.duration != null ? fmtTime(item.duration) : '—'}</div>
+    ${item._locked ? '<i class="ti ti-lock q-lock" title="Reconecte a pasta pra tocar"></i>' : ''}
     <button class="q-remove" title="Remover" aria-label="Remover faixa"><i class="ti ti-x"></i></button>
   `;
   drawMiniArt(div.querySelector('canvas'), item.seed);
   div.addEventListener('click', e => {
     if (e.target.closest('.q-remove')) return;
+    if (item._locked) {
+      showReconnectBanner();
+      document.getElementById('reconnect-banner').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      return;
+    }
     selectTrack(idx);
     playAudio();
   });
@@ -335,7 +341,6 @@ function updateStats() {
 
 // ── Playback ───────────────────────────────────────────────────
 function selectTrack(idx) {
-  console.log('Selecting track', idx);
   if (idx < 0 || idx >= queue.length) return;
   currentIdx = idx;
   const item = queue[idx];
@@ -352,10 +357,8 @@ function selectTrack(idx) {
 }
 
 async function playAudio() {
-  console.log('Playing audio at index', currentIdx);
   if (currentIdx < 0 || currentIdx >= queue.length) return;
   const item = queue[currentIdx];
-  console.log('Playing', item.title, 'by', item.artist);
   const token = ++playbackToken;
   stop({ clearSrc: false, revokeCurrentUrl: true });
 
@@ -631,19 +634,25 @@ function showReconnectBanner() {
 }
 
 document.getElementById('btn-reconnect').addEventListener('click', async () => {
+  let stillLocked = false;
   for (const item of queue) {
     if (!item.handle) continue;
-    try { await item.handle.requestPermission({ mode: 'read' }); } catch {}
+    try {
+      const perm = await item.handle.requestPermission({ mode: 'read' });
+      item._locked = perm !== 'granted';
+    } catch {
+      item._locked = true;
+    }
+    if (item._locked) stillLocked = true;
   }
-  document.getElementById('reconnect-banner').style.display = 'none';
-  if (currentIdx === -1 && queue.length > 0) selectTrack(0);
+  document.getElementById('reconnect-banner').style.display = stillLocked ? 'flex' : 'none';
+  renderQueue();
+  if (!stillLocked && currentIdx === -1 && queue.length > 0) selectTrack(0);
 });
 
 async function loadPersistedQueue() {
-  console.log('Loading persisted queue...');
   if (!supportsFSAccess) return;
   const saved = await getAllTracks();
-  console.log('Loaded', saved.length, 'tracks from IndexedDB');
   if (!saved.length) return;
   queue = saved;
   renderQueue();
@@ -651,8 +660,10 @@ async function loadPersistedQueue() {
   let needsReconnect = false;
   for (const item of queue) {
     const perm = await item.handle.queryPermission({ mode: 'read' });
-    if (perm !== 'granted') needsReconnect = true;
+    item._locked = perm !== 'granted';
+    if (item._locked) needsReconnect = true;
   }
+  renderQueue();
   if (needsReconnect) showReconnectBanner();
   else if (currentIdx === -1) selectTrack(0);
 }
