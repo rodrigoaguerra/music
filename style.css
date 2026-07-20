@@ -233,6 +233,10 @@ input[type=range]::-moz-range-thumb {
 .q-item:hover { background: #1E1E24; }
 .q-item.active { background: #1D1830; }
 
+.q-item.locked { opacity: 0.4; cursor: not-allowed; }
+.q-item.locked:hover { background: none; }
+.q-lock { font-size: 14px; color: #4A4760; flex-shrink: 0; }
+
 .q-num {
   font-size: 11px;
   color: #3A3850;
