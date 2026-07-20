@@ -21,6 +21,7 @@ let repeat = 0; // 0=off 1=all 2=one
 let currentObjectURL = null;
 let wfBars = [];
 let animId = null;
+let playbackToken = 0;
 
 const metadataLoader = new Audio();
 metadataLoader.preload = 'metadata';
@@ -355,42 +356,58 @@ async function playAudio() {
   if (currentIdx < 0 || currentIdx >= queue.length) return;
   const item = queue[currentIdx];
   console.log('Playing', item.title, 'by', item.artist);
-  stop();
+  const token = ++playbackToken;
+  stop({ clearSrc: false, revokeCurrentUrl: true });
 
   let file;
   try {
     file = await getFileFor(item);
   } catch (err) {
+    if (token !== playbackToken) return;
     console.warn('Sem permissão de acesso', err);
     showReconnectBanner();
     return;
   }
 
   const url = URL.createObjectURL(file);
+  if (token !== playbackToken) {
+    URL.revokeObjectURL(url);
+    return;
+  }
+
   currentObjectURL = url;
   audio.preload = 'auto';
   audio.src = url;
   audio.volume = document.getElementById('vol-slider').value / 100;
-  
-  // Alteração aqui:
-  audio.play().then(() => {
+
+  try {
+    await audio.play();
+    if (token !== playbackToken) {
+      audio.pause();
+      return;
+    }
     isPlaying = true;
     updatePlayIcon();
     startAnim();
-  }).catch(err => {
-    // Ignora o erro se for apenas uma interrupção de reprodução
-    if (err.name !== 'AbortError') {
+  } catch (err) {
+    if (token !== playbackToken) return;
+    if (err.name !== 'AbortError' && err.name !== 'NotAllowedError') {
       console.warn('Playback error:', err);
     }
-  });
+  }
 }
 
-function stop() {
+function stop({ clearSrc = true, revokeCurrentUrl = true } = {}) {
   stopAnim();
-  audio.pause();
-  audio.src = '';
-  audio.preload = 'none';
-  if (currentObjectURL) { URL.revokeObjectURL(currentObjectURL); currentObjectURL = null; }
+  if (!audio.paused) audio.pause();
+  if (clearSrc) {
+    audio.src = '';
+    audio.preload = 'none';
+  }
+  if (revokeCurrentUrl && currentObjectURL) {
+    URL.revokeObjectURL(currentObjectURL);
+    currentObjectURL = null;
+  }
   isPlaying = false;
   updatePlayIcon();
   updateMediaSessionState();
@@ -453,8 +470,10 @@ audio.addEventListener('loadedmetadata', () => {
 audio.addEventListener('ended', nextTrack);
 
 audio.addEventListener('error', e => {
-  console.warn('Audio error', e);
-  nextTrack();
+  const errorCode = e?.target?.error?.code;
+  console.warn('Audio error', errorCode, e);
+  if (!audio.src || audio.paused || !isPlaying) return;
+  if (errorCode === 1) return;
 });
 
 // ── Controls ───────────────────────────────────────────────────
@@ -624,6 +643,7 @@ async function loadPersistedQueue() {
   console.log('Loading persisted queue...');
   if (!supportsFSAccess) return;
   const saved = await getAllTracks();
+  console.log('Loaded', saved.length, 'tracks from IndexedDB');
   if (!saved.length) return;
   queue = saved;
   renderQueue();
