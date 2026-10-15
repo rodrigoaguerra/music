@@ -14,6 +14,7 @@ const artCtx = artCanvas.getContext('2d');
 const supportsFSAccess = 'showDirectoryPicker' in window;
 
 let queue = [];
+let AllQueue = []; // para restaurar a lista completa ao clicar em "Todas as faixas"
 let folders = new Map(); // Map<folderName, [trackObjects]>
 let currentIdx = -1;
 let isPlaying = false;
@@ -292,7 +293,9 @@ function buildFoldersList(folder) {
   div.addEventListener('click', e => {
     if (e.target.closest('.q-remove')) return;
     queueListEl.innerHTML = '';
+    AllQueue = [...queue]; // Salva a lista completa antes de filtrar
     folders.get(folder).forEach((item, idx) => queueListEl.appendChild(buildItem(item, idx)));
+    queue = folders.get(folder); // Atualiza a fila atual para a pasta selecionada
   });
   return div; 
 }
@@ -560,6 +563,7 @@ document.getElementById('btn-filter-folder').addEventListener('click', async () 
 
 document.getElementById('btn-all').addEventListener('click', () => { 
   if(queue.length === 0) return;
+  queue = [...AllQueue]; // Restaura a lista completa
   renderQueue();
 });
 
