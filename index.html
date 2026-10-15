@@ -53,9 +53,23 @@
   <div class="card queue-panel">
     <div class="queue-header">
       <span class="queue-title">Fila</span>
+     
       <button class="add-btn" id="btn-add-folder">
         <i class="ti ti-folder-plus" aria-hidden="true"></i> Adicionar pasta
       </button>
+      <div class="dropdown" style="float:right;">
+        <button class="btn-dropdown">
+          <i class="ti ti-dots" aria-hidden="true"></i>
+        </button>
+        <div class="dropdown-content">
+          <button class="add-btn" id="btn-filter-folder">
+            <i class="ti ti-folder" aria-hidden="true"></i> Pastas
+          </button>
+          <button class="add-btn" id="btn-all">
+            <i class="ti ti-music" aria-hidden="true"></i> Todas as faixas
+          </button>
+        </div>
+      </div>
     </div>
 
     <div id="loading-bar" class="loading-bar" style="display: none;">

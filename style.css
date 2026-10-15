@@ -175,7 +175,7 @@ input[type=range]::-moz-range-thumb {
 
 .queue-title { font-size: 13px; font-weight: 500; color: #6B6880; letter-spacing: 0.08em; text-transform: uppercase; }
 
-.add-btn {
+.add-btn, .btn-dropdown {
   display: flex;
   align-items: center;
   gap: 5px;
@@ -333,3 +333,34 @@ body.drag-over::after {
 @keyframes spin {
   100% { transform: rotate(360deg); }
 }
+
+.dropdown {
+  position: relative;
+  display: inline-block;
+}
+
+.dropdown-content {
+  display: none;
+  position: absolute;
+  right: 0;
+  background-color: #0D0D0F;
+  min-width: 160px;
+  box-shadow: 0px 8px 16px 0px rgba(0,0,0,0.2);
+  z-index: 1;
+}
+
+.dropdown-content button {
+  color: #E8E4DC;
+  padding: 12px 16px;
+  text-decoration: none;
+  display: block;
+  background: none;
+  border: none;
+  cursor: pointer;
+  width: 100%;
+  text-align: left;
+}
+
+.dropdown-content button:hover {background-color: #1E1E24; }
+.dropdown:hover .dropdown-content {display: block;}
+.dropdown:hover .btn-dropdown {background-color: #7C5CFC; color: #fff; }

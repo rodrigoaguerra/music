@@ -14,6 +14,7 @@ const artCtx = artCanvas.getContext('2d');
 const supportsFSAccess = 'showDirectoryPicker' in window;
 
 let queue = [];
+let folders = new Map(); // Map<folderName, [trackObjects]>
 let currentIdx = -1;
 let isPlaying = false;
 let shuffle = false;
@@ -233,15 +234,19 @@ function addFiles(files) {
     if (!AUDIO_EXT.test(file.name)) continue;
     if (queue.some(q => q.file.name === file.name && q.file.size === file.size)) continue;
     const { artist, title } = parseName(file.name);
-    const folder = file.webkitRelativePath ? file.webkitRelativePath.split('/')[0] : '';
-    queue.push({
+    const path = file.webkitRelativePath.split('/');
+    const folder = path.length > 1 ? path[path.length - 2] : 'Sem pasta';
+    const track = {
       file,
       title,
-      artist: artist || folder || 'Desconhecido',
+      artist: artist || 'Desconhecido',
+      folder: folder,
       duration: null,
       seed: hashStr(file.name + file.size)
-    });
-    
+    };
+
+    queue.push(track);
+    folders.set(folder, (folders.get(folder) || []).concat(track));
     // Atualiza o contador visual
     loadCurrent.textContent = queue.length;
   }
@@ -270,6 +275,28 @@ function renderQueue() {
   queue.forEach((item, idx) => queueListEl.appendChild(buildItem(item, idx)));
 }
 
+function buildFoldersList(folder) {
+  const div = document.createElement('div');
+  div.className = 'q-item';
+  div.dataset.idx = folder;
+  div.innerHTML = `
+    <div class="q-num"> • </div>
+    <div class="q-art"><canvas width="36" height="36"></canvas></div>
+    <div class="q-info">
+      <div class="q-name">${esc(folder)}</div>
+      <div class="q-meta">${esc(folders.get(folder).length)} faixas</div>
+    </div>
+    <div class="q-dur" data-dur>—</div>
+  `;
+  drawMiniArt(div.querySelector('canvas'), hashStr(folder));
+  div.addEventListener('click', e => {
+    if (e.target.closest('.q-remove')) return;
+    queueListEl.innerHTML = '';
+    folders.get(folder).forEach((item, idx) => queueListEl.appendChild(buildItem(item, idx)));
+  });
+  return div; 
+}
+
 function buildItem(item, idx) {
   const div = document.createElement('div');
   div.className = 'q-item' + (idx === currentIdx ? ' active' : '');
@@ -279,7 +306,7 @@ function buildItem(item, idx) {
     <div class="q-art"><canvas width="36" height="36"></canvas></div>
     <div class="q-info">
       <div class="q-name">${esc(item.title)}</div>
-      <div class="q-meta">${esc(item.artist)}</div>
+      <div class="q-meta">${esc(item.folder)} • ${esc(item.artist)}</div>
     </div>
     <div class="q-dur" data-dur>${item.duration != null ? fmtTime(item.duration) : '—'}</div>
     ${item._locked ? '<i class="ti ti-lock q-lock" title="Reconecte a pasta pra tocar"></i>' : ''}
@@ -346,6 +373,7 @@ function selectTrack(idx) {
   const item = queue[idx];
   trackTitleEl.textContent = item.title;
   trackArtistEl.textContent = item.artist;
+  // trackFolderEl.textContent = item.folder;
   drawArtwork(item.seed);
   updateMediaSessionMetadata(item); // update media session metadata
   paintWaveform(0);
@@ -523,6 +551,18 @@ volSlider.addEventListener('input', function() {
   updateSliderFill(this);
 });
 
+document.getElementById('btn-filter-folder').addEventListener('click', async () => {
+  if (folders.size === 0) return;
+  const folderNames = Array.from(folders.keys());
+  queueListEl.innerHTML = '';
+  folderNames.forEach((folder) => queueListEl.appendChild(buildFoldersList(folder)));
+});
+
+document.getElementById('btn-all').addEventListener('click', () => { 
+  if(queue.length === 0) return;
+  renderQueue();
+});
+
 document.getElementById('btn-add-folder').addEventListener('click', async () => {
   if (supportsFSAccess) {
     try {
@@ -609,14 +649,19 @@ async function addFolderHandle(dirHandle) {
     if (queue.some(q => q.id === id)) continue;
 
     const { artist, title } = parseName(file.name);
-    const folder = path.split('/')[0];
+    const folder = path.length > 1 ? path[path.length - 2] : 'Sem pasta';
     const track = {
-      id, handle, path,
-      title, artist: artist || folder || 'Desconhecido',
+      id, 
+      handle, 
+      path,
+      title, 
+      artist: artist || 'Desconhecido',
+      folder: folder,
       duration: null,
       seed: hashStr(path + file.size)
     };
     queue.push(track);
+    folders.set(folder, (folders.get(folder) || []).concat(track));
     putTrack(track).catch(err => console.warn('Erro ao salvar no IndexedDB', err));
     count++;
     loadCurrent.textContent = count;
