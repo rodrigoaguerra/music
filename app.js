@@ -13,9 +13,9 @@ const artCanvas = document.getElementById('artwork-canvas');
 const artCtx = artCanvas.getContext('2d');
 const supportsFSAccess = 'showDirectoryPicker' in window;
 
+let AllTracks = []; // para restaurar a lista completa ao clicar em "Todas as faixas"
 let queue = [];
 let playlist = new Map(); // adicionar musicas a uma playlist separada
-let AllQueue = []; // para restaurar a lista completa ao clicar em "Todas as faixas"
 let folders = new Map(); // Map<folderName, [trackObjects]>
 let currentIdx = -1;
 let isPlaying = false;
@@ -248,6 +248,7 @@ function addFiles(files) {
     };
 
     queue.push(track);
+    AllTracks.push(track);
     folders.set(folder, (folders.get(folder) || []).concat(track));
     // Atualiza o contador visual
     loadCurrent.textContent = queue.length;
@@ -333,8 +334,8 @@ function buildItem(item, idx) {
   });
   div.querySelector('.q-add-to-playlist').addEventListener('click', e => {
     e.stopPropagation();
-    if (!playlist.has(item.id)) {
-      playlist.set(item.id, item);
+    if (!playlist.has(idx)) {
+      playlist.set(idx, item);
     }
   });
   return div;
@@ -389,7 +390,7 @@ function selectTrack(idx) {
   paintWaveform(0);
   curTimeEl.textContent = '0:00';
   durTimeEl.textContent = item.duration != null ? fmtTime(item.duration) : '0:00';
-  document.querySelectorAll('.q-item').forEach((el, i) => el.classList.toggle('active', i === idx));
+  document.querySelectorAll('.q-item').forEach((el) => el.classList.toggle('active', Number(el.getAttribute('data-idx')) === idx));
   const activeEl = queueListEl.querySelector('.q-item.active');
   if (activeEl) activeEl.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
 }
@@ -561,8 +562,9 @@ volSlider.addEventListener('input', function() {
 
 document.getElementById('btn-playlist').addEventListener('click', () => {
   if (folders.size === 0) return;
-  AllQueue = [...queue]; // Salva a lista completa antes de filtrar
-  queueListEl.innerHTML = '';
+  queueListEl.innerHTML = ''; 
+  currentIdx = -1; // reset current index when switching to playlist
+  queue = Array.from(playlist.values()); // Atualiza a fila atual para a playlist
   playlist.forEach((item) => queueListEl.appendChild(buildItem(item, queue.indexOf(item))));
 });
 
@@ -570,13 +572,13 @@ document.getElementById('btn-filter-folder').addEventListener('click', async () 
   if (folders.size === 0) return;
   const folderNames = Array.from(folders.keys());
   queueListEl.innerHTML = '';
-  AllQueue = [...queue]; // Salva a lista completa antes de filtrar
   folderNames.forEach((folder) => queueListEl.appendChild(buildFoldersList(folder)));
 });
 
 document.getElementById('btn-all-tracks').addEventListener('click', () => { 
   if(queue.length === 0) return;
-  queue = [...AllQueue]; // Restaura a lista completa
+  currentIdx = -1; // reset current index when switching to all tracks
+  queue = [...AllTracks]; // Restaura a lista completa
   renderQueue();
 });
 
@@ -678,6 +680,7 @@ async function addFolderHandle(dirHandle) {
       seed: hashStr(path + file.size)
     };
     queue.push(track);
+    AllTracks.push(track); // adiciona à lista completa
     folders.set(folder, (folders.get(folder) || []).concat(track));
     putTrack(track).catch(err => console.warn('Erro ao salvar no IndexedDB', err));
     count++;
