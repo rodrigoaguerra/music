@@ -14,6 +14,7 @@ const artCtx = artCanvas.getContext('2d');
 const supportsFSAccess = 'showDirectoryPicker' in window;
 
 let queue = [];
+let playlist = new Map(); // adicionar musicas a uma playlist separada
 let AllQueue = []; // para restaurar a lista completa ao clicar em "Todas as faixas"
 let folders = new Map(); // Map<folderName, [trackObjects]>
 let currentIdx = -1;
@@ -312,6 +313,7 @@ function buildItem(item, idx) {
     </div>
     <div class="q-dur" data-dur>${item.duration != null ? fmtTime(item.duration) : '—'}</div>
     ${item._locked ? '<i class="ti ti-lock q-lock" title="Reconecte a pasta pra tocar"></i>' : ''}
+    <button class="q-add-to-playlist" title="Adicionar à playlist" aria-label="Adicionar à playlist"><i class="ti ti-plus"></i></button>
     <button class="q-remove" title="Remover" aria-label="Remover faixa"><i class="ti ti-x"></i></button>
   `;
   drawMiniArt(div.querySelector('canvas'), item.seed);
@@ -328,6 +330,12 @@ function buildItem(item, idx) {
   div.querySelector('.q-remove').addEventListener('click', e => {
     e.stopPropagation();
     removeTrack(idx);
+  });
+  div.querySelector('.q-add-to-playlist').addEventListener('click', e => {
+    e.stopPropagation();
+    if (!playlist.has(item.id)) {
+      playlist.set(item.id, item);
+    }
   });
   return div;
 }
@@ -551,6 +559,13 @@ updateSliderFill(volSlider);
 volSlider.addEventListener('input', function() {
   audio.volume = this.value / 100;
   updateSliderFill(this);
+});
+
+document.getElementById('btn-playlist').addEventListener('click', () => {
+  if (folders.size === 0) return;
+  AllQueue = [...queue]; // Salva a lista completa antes de filtrar
+  queueListEl.innerHTML = '';
+  playlist.forEach((item) => queueListEl.appendChild(buildItem(item, queue.indexOf(item))));
 });
 
 document.getElementById('btn-filter-folder').addEventListener('click', async () => {

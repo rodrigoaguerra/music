@@ -266,7 +266,7 @@ input[type=range]::-moz-range-thumb {
 
 .q-dur { font-size: 11px; color: #4A4760; flex-shrink: 0; font-variant-numeric: tabular-nums; }
 
-.q-remove {
+.q-remove, .q-add-to-playlist {
   background: none;
   border: none;
   color: #3A3850;
@@ -282,6 +282,8 @@ input[type=range]::-moz-range-thumb {
 
 .q-item:hover .q-remove { display: flex; }
 .q-remove:hover { color: #FF5C7A; }
+.q-item:hover .q-add-to-playlist { display: flex; }
+.q-add-to-playlist:hover { color: #7C5CFC; }
 
 .stats-bar {
   padding: 10px 16px;

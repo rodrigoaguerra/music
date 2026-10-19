@@ -1,4 +1,4 @@
-const CACHE_NAME = 'music-player-v1';
+const CACHE_NAME = 'music-player-v3';
 const APP_SHELL = [
   './',
   './index.html',
@@ -31,13 +31,16 @@ self.addEventListener('fetch', (event) => {
   // só intercepta GET do mesmo domínio — deixa a CDN de ícones (tabler-icons) passar direto
   if (event.request.method !== 'GET' || !event.request.url.startsWith(self.location.origin)) return;
 
+  // rede primeiro: sempre pega a versão mais nova e atualiza o cache; offline, cai no cache
   event.respondWith(
-    caches.match(event.request).then((cached) => {
-      return cached || fetch(event.request).then((response) => {
-        const copy = response.clone();
-        caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
+    fetch(event.request)
+      .then((response) => {
+        if (response && response.ok) {
+          const copy = response.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
+        }
         return response;
-      }).catch(() => cached);
-    })
+      })
+      .catch(() => caches.match(event.request).then((cached) => cached || caches.match('./index.html')))
   );
 });
