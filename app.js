@@ -397,8 +397,8 @@ function selectTrack(idx) {
 async function playAudio() {
   if (currentIdx < 0 || currentIdx >= queue.length) return;
   const item = queue[currentIdx];
-  const token = ++playbackToken;
   stop({ clearSrc: false, revokeCurrentUrl: true });
+  const token = playbackToken;
 
   let file;
   try {
@@ -423,10 +423,7 @@ async function playAudio() {
 
   try {
     await audio.play();
-    if (token !== playbackToken) {
-      audio.pause();
-      return;
-    }
+    if (token !== playbackToken) return;
     isPlaying = true;
     updatePlayIcon();
     startAnim();
@@ -439,6 +436,7 @@ async function playAudio() {
 }
 
 function stop({ clearSrc = true, revokeCurrentUrl = true } = {}) {
+  playbackToken++;
   stopAnim();
   if (!audio.paused) audio.pause();
   if (clearSrc) {
