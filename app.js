@@ -293,7 +293,6 @@ function buildFoldersList(folder) {
   div.addEventListener('click', e => {
     if (e.target.closest('.q-remove')) return;
     queueListEl.innerHTML = '';
-    AllQueue = [...queue]; // Salva a lista completa antes de filtrar
     folders.get(folder).forEach((item, idx) => queueListEl.appendChild(buildItem(item, idx)));
     queue = folders.get(folder); // Atualiza a fila atual para a pasta selecionada
   });
@@ -558,10 +557,11 @@ document.getElementById('btn-filter-folder').addEventListener('click', async () 
   if (folders.size === 0) return;
   const folderNames = Array.from(folders.keys());
   queueListEl.innerHTML = '';
+  AllQueue = [...queue]; // Salva a lista completa antes de filtrar
   folderNames.forEach((folder) => queueListEl.appendChild(buildFoldersList(folder)));
 });
 
-document.getElementById('btn-all').addEventListener('click', () => { 
+document.getElementById('btn-all-tracks').addEventListener('click', () => { 
   if(queue.length === 0) return;
   queue = [...AllQueue]; // Restaura a lista completa
   renderQueue();
