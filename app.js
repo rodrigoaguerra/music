@@ -13,8 +13,8 @@ const artCanvas = document.getElementById('artwork-canvas');
 const artCtx = artCanvas.getContext('2d');
 const supportsFSAccess = 'showDirectoryPicker' in window;
 
-let AllTracks = []; // para restaurar a lista completa ao clicar em "Todas as faixas"
-let queue = [];
+let AllTracks = new Map(); // para restaurar a lista completa ao clicar em "Todas as faixas"
+let queue = new Map(); // Map<trackId, trackObject> para gerenciar a fila de reprodução
 let playlist = new Map(); // adicionar musicas a uma playlist separada
 let folders = new Map(); // Map<folderName, [trackObjects]>
 let currentIdx = -1;
@@ -234,11 +234,12 @@ function addFiles(files) {
 
   for (const file of files) {
     if (!AUDIO_EXT.test(file.name)) continue;
-    if (queue.some(q => q.file.name === file.name && q.file.size === file.size)) continue;
+    if (Array.from(queue.values()).some(q => q.file.name === file.name && q.file.size === file.size)) continue;
     const { artist, title } = parseName(file.name);
     const path = file.webkitRelativePath.split('/');
     const folder = path.length > 1 ? path[path.length - 2] : 'Sem pasta';
     const track = {
+      id: hashStr(file.name + file.size).toString(),
       file,
       title,
       artist: artist || 'Desconhecido',
@@ -247,35 +248,38 @@ function addFiles(files) {
       seed: hashStr(file.name + file.size)
     };
 
-    queue.push(track);
-    AllTracks.push(track);
+    queue.set(track.id, track);
+    AllTracks.set(track.id, track);
     folders.set(folder, (folders.get(folder) || []).concat(track));
     // Atualiza o contador visual
-    loadCurrent.textContent = queue.length;
+    loadCurrent.textContent = queue.size;
   }
 
-  if (queue.length === 0) {
+  if (queue.size === 0) {
     loadingBar.style.display = 'none'; 
     return;
   }
 
   // Lazy duration probe (metadata only, no decode)
-  probeDurations(queue.filter(i => i.duration === null));
+  probeDurations(Array.from(queue.values()).filter(i => i.duration === null));
 
   renderQueue();
-  if (currentIdx === -1) selectTrack(0);
+  if (currentIdx === -1) {
+    const firstKey = queue.size > 0 ? queue.keys().next().value : -1;
+    selectTrack(firstKey);
+  } 
 }
 
 function renderQueue() {
   queueListEl.innerHTML = '';
-  if (queue.length === 0) {
+  if (queue.size === 0) {
     queueListEl.appendChild(queueEmptyEl);
     statsBar.style.display = 'none';
     return;
   }
   statsBar.style.display = 'flex';
   updateStats();
-  queue.forEach((item, idx) => queueListEl.appendChild(buildItem(item, idx)));
+  queue.values().forEach((item, index) => queueListEl.appendChild(buildItem(item, index)));
 }
 
 function buildFoldersList(folder) {
@@ -296,15 +300,19 @@ function buildFoldersList(folder) {
     if (e.target.closest('.q-remove')) return;
     queueListEl.innerHTML = '';
     folders.get(folder).forEach((item, idx) => queueListEl.appendChild(buildItem(item, idx)));
-    queue = folders.get(folder); // Atualiza a fila atual para a pasta selecionada
+    const trackList = folders.get(folder); // Atualiza a fila atual para a pasta selecionada
+    queue = new Map();
+    for (const track of trackList) {
+      queue.set(track.id, track);
+    }
   });
   return div; 
 }
 
 function buildItem(item, idx) {
   const div = document.createElement('div');
-  div.className = 'q-item' + (idx === currentIdx ? ' active' : '');
-  div.dataset.idx = idx;
+  div.className = 'q-item' + (item.id === currentIdx ? ' active' : '');
+  div.dataset.idx = item.id;
   div.innerHTML = `
     <div class="q-num">${idx + 1}</div>
     <div class="q-art"><canvas width="36" height="36"></canvas></div>
@@ -325,40 +333,40 @@ function buildItem(item, idx) {
       document.getElementById('reconnect-banner').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
       return;
     }
-    selectTrack(idx);
+    selectTrack(item.id);
     playAudio();
   });
   div.querySelector('.q-remove').addEventListener('click', e => {
     e.stopPropagation();
-    removeTrack(idx);
+    removeTrack(item.id);
   });
   div.querySelector('.q-add-to-playlist').addEventListener('click', e => {
     e.stopPropagation();
-    if (!playlist.has(idx)) {
-      playlist.set(idx, item);
+    if (!playlist.has(item.id)) {
+      playlist.set(item.id, item);
     }
   });
   return div;
 }
 
 function updateQueueItem(item) {
-  const idx = queue.indexOf(item);
-  const el = queueListEl.querySelector(`[data-idx="${idx}"] [data-dur]`);
+  const id = item.id;
+  const el = queueListEl.querySelector(`[data-idx="${id}"] [data-dur]`);
   if (el) el.textContent = item.duration != null ? fmtTime(item.duration) : '—';
 }
 
-function removeTrack(idx) {
-  const item = queue[idx];
+function removeTrack(id) {
+  const item = queue.get(id);
   if (item.handle) deleteTrackDB(item.id).catch(() => {});
-  if (idx === currentIdx) {
+  if (id === currentIdx) {
     stop();
     currentIdx = -1;
-  } else if (idx < currentIdx) {
-    currentIdx--;
+  } else if (id < currentIdx) {
+    currentIdx = queue.keys().next().value; // reset currentIdx to first track if removed track was before current
   }
-  queue.splice(idx, 1);
+  queue.delete(id);
   renderQueue();
-  if (queue.length === 0) {
+  if (queue.size === 0) {
     currentIdx = -1;
     trackTitleEl.textContent = 'Nenhuma faixa';
     trackArtistEl.textContent = 'Adicione uma pasta para começar';
@@ -366,22 +374,22 @@ function removeTrack(idx) {
     paintWaveform(0);
     curTimeEl.textContent = '0:00';
     durTimeEl.textContent = '0:00';
-  } else if (currentIdx === -1 && queue.length > 0) {
-    selectTrack(0);
+  } else if (currentIdx === -1 && queue.size > 0) {
+    selectTrack(queue.keys().next().value);
   }
 }
 
 function updateStats() {
-  document.getElementById('stat-count').textContent = queue.length;
-  const total = queue.reduce((s, i) => s + (i.duration || 0), 0);
+  document.getElementById('stat-count').textContent = queue.size;
+  const total = Array.from(queue.values()).reduce((s, i) => s + (i.duration || 0), 0);
   document.getElementById('stat-dur').textContent = total > 0 ? fmtTime(total) : '—';
 }
 
 // ── Playback ───────────────────────────────────────────────────
-function selectTrack(idx) {
-  if (idx < 0 || idx >= queue.length) return;
-  currentIdx = idx;
-  const item = queue[idx];
+function selectTrack(id) {
+  if (!queue.has(id)) return;
+  currentIdx = id;
+  const item = queue.get(id);
   trackTitleEl.textContent = item.title;
   trackArtistEl.textContent = item.artist;
   // trackFolderEl.textContent = item.folder;
@@ -390,14 +398,14 @@ function selectTrack(idx) {
   paintWaveform(0);
   curTimeEl.textContent = '0:00';
   durTimeEl.textContent = item.duration != null ? fmtTime(item.duration) : '0:00';
-  document.querySelectorAll('.q-item').forEach((el) => el.classList.toggle('active', Number(el.getAttribute('data-idx')) === idx));
+  document.querySelectorAll('.q-item').forEach((el) => el.classList.toggle('active', el.getAttribute('data-idx') === id));
   const activeEl = queueListEl.querySelector('.q-item.active');
   if (activeEl) activeEl.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
 }
 
 async function playAudio() {
-  if (currentIdx < 0 || currentIdx >= queue.length) return;
-  const item = queue[currentIdx];
+  if (!queue.has(currentIdx)) return;
+  const item = queue.get(currentIdx);
   stop({ clearSrc: false, revokeCurrentUrl: true });
   const token = playbackToken;
 
@@ -458,23 +466,23 @@ function updatePlayIcon() {
 }
 
 function nextTrack() {
-  if (queue.length === 0) return;
+  if (queue.size === 0) return;
   if (repeat === 2) { audio.currentTime = 0; audio.play(); return; }
   let nxt;
   if (shuffle) {
-    do { nxt = Math.floor(Math.random() * queue.length); } while (queue.length > 1 && nxt === currentIdx);
+    do { nxt = Math.floor(Math.random() * queue.size); } while (queue.size > 1 && nxt === currentIdx);
   } else {
-    nxt = (currentIdx + 1) % queue.length;
-    if (nxt === 0 && repeat === 0) { selectTrack(0); stop(); paintWaveform(0); return; }
+    nxt = (currentIdx + 1) % queue.size;
+    if (nxt === 0 && repeat === 0) { selectTrack(queue.keys().next().value); stop(); paintWaveform(0); return; }
   }
   selectTrack(nxt);
   playAudio();
 }
 
 function prevTrack() {
-  if (queue.length === 0) return;
+  if (queue.size === 0) return;
   if (audio.currentTime > 3) { audio.currentTime = 0; return; }
-  const prv = (currentIdx - 1 + queue.length) % queue.length;
+  const prv = (currentIdx - 1 + queue.size) % queue.size;
   selectTrack(prv);
   playAudio();
 }
@@ -503,7 +511,7 @@ audio.addEventListener('timeupdate', () => {
 
 audio.addEventListener('loadedmetadata', () => {
   durTimeEl.textContent = fmtTime(audio.duration);
-  const item = queue[currentIdx];
+  const item = queue.get(currentIdx);
   if (item && !item.duration) { item.duration = audio.duration; updateStats(); }
 });
 
@@ -518,8 +526,8 @@ audio.addEventListener('error', e => {
 
 // ── Controls ───────────────────────────────────────────────────
 document.getElementById('btn-play').addEventListener('click', () => {
-  if (queue.length === 0) return;
-  if (currentIdx < 0) { selectTrack(0); playAudio(); return; }
+  if (queue.size === 0) return;
+  if (currentIdx < 0) { selectTrack(queue.keys().next().value); playAudio(); return; }
   if (isPlaying) {
     audio.pause();
     isPlaying = false;
@@ -563,9 +571,8 @@ volSlider.addEventListener('input', function() {
 document.getElementById('btn-playlist').addEventListener('click', () => {
   if (folders.size === 0) return;
   queueListEl.innerHTML = ''; 
-  currentIdx = -1; // reset current index when switching to playlist
-  queue = Array.from(playlist.values()); // Atualiza a fila atual para a playlist
-  playlist.forEach((item) => queueListEl.appendChild(buildItem(item, queue.indexOf(item))));
+  queue = new Map(playlist); // Atualiza a fila atual para a playlist
+  playlist.values().forEach((item, index) => queueListEl.appendChild(buildItem(item, index)));
 });
 
 document.getElementById('btn-filter-folder').addEventListener('click', async () => {
@@ -576,9 +583,8 @@ document.getElementById('btn-filter-folder').addEventListener('click', async () 
 });
 
 document.getElementById('btn-all-tracks').addEventListener('click', () => { 
-  if(queue.length === 0) return;
-  currentIdx = -1; // reset current index when switching to all tracks
-  queue = [...AllTracks]; // Restaura a lista completa
+  if(queue.size === 0) return;
+  queue = new Map(AllTracks); // Restaura a lista completa
   renderQueue();
 });
 
@@ -664,23 +670,22 @@ async function addFolderHandle(dirHandle) {
   for await (const { handle, path } of walkDirectory(dirHandle)) {
     if (!AUDIO_EXT.test(path)) continue;
     const file = await handle.getFile(); // só pra ler nome/tamanho
-    const id = hashStr(path + file.size).toString();
-    if (queue.some(q => q.id === id)) continue;
+    if (queue.values().some(q => q.id === id)) continue;
 
     const { artist, title } = parseName(file.name);
     const folder = path.length > 1 ? path[path.length - 2] : 'Sem pasta';
     const track = {
-      id, 
+      id: hashStr(file.name + file.size).toString(), 
       handle, 
       path,
       title, 
       artist: artist || 'Desconhecido',
       folder: folder,
       duration: null,
-      seed: hashStr(path + file.size)
+      seed: hashStr(file.name + file.size)
     };
-    queue.push(track);
-    AllTracks.push(track); // adiciona à lista completa
+    queue.set(track.id, track);
+    AllTracks.set(track.id, track); // adiciona à lista completa
     folders.set(folder, (folders.get(folder) || []).concat(track));
     putTrack(track).catch(err => console.warn('Erro ao salvar no IndexedDB', err));
     count++;
@@ -689,8 +694,8 @@ async function addFolderHandle(dirHandle) {
 
   loadingBar.style.display = 'none';
   renderQueue();
-  probeDurations(queue.filter(i => i.duration === null));
-  if (currentIdx === -1 && queue.length > 0) selectTrack(0);
+  probeDurations(queue.values().filter(i => i.duration === null));
+  if (currentIdx === -1 && queue.size > 0) selectTrack(queue.keys().next().value);
 }
 
 // ── Load persisted queue ───────────────────────────────────────
@@ -700,7 +705,7 @@ function showReconnectBanner() {
 
 document.getElementById('btn-reconnect').addEventListener('click', async () => {
   let stillLocked = false;
-  for (const item of queue) {
+  for (const item of queue.values()) {
     if (!item.handle) continue;
     try {
       const perm = await item.handle.requestPermission({ mode: 'read' });
@@ -712,25 +717,28 @@ document.getElementById('btn-reconnect').addEventListener('click', async () => {
   }
   document.getElementById('reconnect-banner').style.display = stillLocked ? 'flex' : 'none';
   renderQueue();
-  if (!stillLocked && currentIdx === -1 && queue.length > 0) selectTrack(0);
+  if (!stillLocked && currentIdx === -1 && queue.size > 0) selectTrack(queue.keys().next().value);
 });
 
 async function loadPersistedQueue() {
   if (!supportsFSAccess) return;
   const saved = await getAllTracks();
   if (!saved.length) return;
-  queue = saved;
+  queue = new Map();
+  for (const track of saved) {
+    queue.set(track.id, track);
+  }
   renderQueue();
 
   let needsReconnect = false;
-  for (const item of queue) {
+  for (const item of queue.values()) {
     const perm = await item.handle.queryPermission({ mode: 'read' });
     item._locked = perm !== 'granted';
     if (item._locked) needsReconnect = true;
   }
   renderQueue();
   if (needsReconnect) showReconnectBanner();
-  else if (currentIdx === -1) selectTrack(0);
+  else if (currentIdx === -1) selectTrack(queue.keys().next().value);
 }
 
 if (navigator.storage?.persist) navigator.storage.persist();
