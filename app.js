@@ -19,6 +19,7 @@ let playlist = new Map(); // adicionar musicas a uma playlist separada
 let folders = new Map(); // Map<folderName, [trackObjects]>
 let currentIdx = -1;
 let isPlaying = false;
+let shufflePlayed = new Set();
 let shuffle = false;
 let repeat = 0; // 0=off 1=all 2=one
 let currentObjectURL = null;
@@ -469,8 +470,19 @@ function nextTrack() {
   if (queue.size === 0) return;
   if (repeat === 2) { audio.currentTime = 0; audio.play(); return; }
   let nxt;
-  if (shuffle) {
-    do { nxt = Math.floor(Math.random() * queue.size); } while (queue.size > 1 && nxt === currentIdx);
+  if (shuffle) { 
+    // busca aleatória de uma musica não tocada ainda
+    const ids = [...shufflePlayed];
+    if (ids.length > 0) {
+      const index = Math.floor(Math.random() * ids.length);
+      nxt = ids[index];
+      shufflePlayed.delete(nxt); 
+    }
+
+    // retorna todas as musicas
+    if(shufflePlayed.size === 0) {
+      resetShufflePlayed();
+    }
   } else {
     nxt = (currentIdx + 1) % queue.size;
     if (nxt === 0 && repeat === 0) { selectTrack(queue.keys().next().value); stop(); paintWaveform(0); return; }
@@ -485,6 +497,12 @@ function prevTrack() {
   const prv = (currentIdx - 1 + queue.size) % queue.size;
   selectTrack(prv);
   playAudio();
+}
+
+function resetShufflePlayed() {
+  shufflePlayed = new Set();
+  Array.from(queue.keys()).map((id) => shufflePlayed.add(id));
+  shufflePlayed.delete(currentIdx);
 }
 
 // ── Audio events ───────────────────────────────────────────────
@@ -545,6 +563,8 @@ document.getElementById('btn-prev').addEventListener('click', prevTrack);
 document.getElementById('btn-shuffle').addEventListener('click', function() {
   shuffle = !shuffle;
   this.classList.toggle('active', shuffle);
+  // adiciona todas a opções aleatorias de musicas
+  if (shuffle && isPlaying) resetShufflePlayed();
   this.title = shuffle ? 'Aleatório ativado (S)' : 'Aleatório (S)';
 });
 
@@ -572,6 +592,7 @@ document.getElementById('btn-playlist').addEventListener('click', () => {
   if (folders.size === 0) return;
   queueListEl.innerHTML = ''; 
   queue = new Map(playlist); // Atualiza a fila atual para a playlist
+  if(shuffle) resetShufflePlayed();
   playlist.values().forEach((item, index) => queueListEl.appendChild(buildItem(item, index)));
 });
 
@@ -584,7 +605,8 @@ document.getElementById('btn-filter-folder').addEventListener('click', async () 
 
 document.getElementById('btn-all-tracks').addEventListener('click', () => { 
   if(queue.size === 0) return;
-  queue = new Map(AllTracks); // Restaura a lista completa
+  queue = new Map(AllTracks); // Restaura a lista completa 
+  if(shuffle) resetShufflePlayed(); // reseta musicas aleatorias
   renderQueue();
 });
 
