@@ -87,6 +87,21 @@ npx serve .
 
 Depois acesse `http://localhost:8000` (ou a porta indicada) no navegador.
 
+### Com Docker
+
+Construa a imagem e inicie o servidor HTTP na porta `8086`:
+
+```bash
+docker build -t music-player .
+docker run --rm -d --name music-player -p 8086:80 music-player
+```
+
+Acesse `http://localhost:8086`. Para parar o container:
+
+```bash
+docker stop music-player
+```
+
 ## 🌐 Compatibilidade
 
 | Recurso | Chrome / Edge / Opera (desktop) | Firefox, Safari e navegadores mobile |
